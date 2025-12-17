@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>指尖魔法 - 3D粒子交互特效</title>
+    <title>Finger Magic - 3D Particle Interaction</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1646424875/camera_utils.min.js"></script>
@@ -138,24 +138,24 @@
         <canvas id="threeCanvas"></canvas>
         <video id="webcam" autoplay muted playsinline></video>
         
-        <button class="fullscreen-btn" id="fullscreenBtn" title="全屏">
+        <button class="fullscreen-btn" id="fullscreenBtn" title="Fullscreen">
             ⛶
         </button>
         
         <div class="magic-text" id="magicText"></div>
         
         <div class="instruction" id="instruction">
-            伸出手指施展魔法：1指=数字1，2指=数字2，3指=数字3，五指=告白特效，握拳=重置
+            Finger Magic: 1 finger = "1", 2 fingers = "2", 3 fingers = "3", 5 fingers = "I ❤️ U", fist = Reset
         </div>
         
         <div class="loading" id="loadingScreen">
             <div class="loading-spinner"></div>
-            <div class="loading-text">加载魔法系统...</div>
+            <div class="loading-text">Loading Magic System...</div>
         </div>
     </div>
 
     <script>
-        // 全局变量
+        // Global variables
         let scene, camera, renderer;
         let particles, particlePositions, particleVelocities, particleAccelerations;
         let particleCount = 15000;
@@ -171,19 +171,23 @@
         let lastShapeChangeTime = 0;
         let hearts = [], balloons = [], flowers = [];
         let isResetting = false;
+        let cameraControls = { x: 0, y: 0, z: 25 };
         
-        // 初始化Three.js
+        // Fix: Initialize CameraUtils globally
+        window.Camera = Camera;
+        
+        // Initialize Three.js
         function initThreeJS() {
-            // 创建场景
+            // Create scene
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x000000);
             scene.fog = new THREE.Fog(0x000000, 10, 30);
             
-            // 创建相机 - 确保文字显示完整
+            // Create camera - ensure text display is complete
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 0, 25);
+            camera.position.set(cameraControls.x, cameraControls.y, cameraControls.z);
             
-            // 创建渲染器
+            // Create renderer
             const canvas = document.getElementById('threeCanvas');
             renderer = new THREE.WebGLRenderer({ 
                 canvas, 
@@ -196,7 +200,7 @@
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             
-            // 添加光源
+            // Add lights
             const ambientLight = new THREE.AmbientLight(0x333333);
             scene.add(ambientLight);
             
@@ -210,29 +214,29 @@
             pointLight.castShadow = true;
             scene.add(pointLight);
             
-            // 创建粒子系统
+            // Create particle system
             createParticleSystem();
             
-            // 事件监听
+            // Event listeners
             window.addEventListener('resize', onWindowResize);
             document.getElementById('fullscreenBtn').addEventListener('click', toggleFullscreen);
             
-            // 隐藏加载界面
+            // Hide loading screen
             setTimeout(() => {
                 document.getElementById('loadingScreen').classList.add('hidden');
             }, 2000);
         }
         
-        // 创建粒子系统
+        // Create particle system
         function createParticleSystem() {
             const geometry = new THREE.BufferGeometry();
             
-            // 初始化数组
+            // Initialize arrays
             particlePositions = new Float32Array(particleCount * 3);
             particleVelocities = new Float32Array(particleCount * 3);
             particleAccelerations = new Float32Array(particleCount * 3);
             
-            // 随机初始位置
+            // Random initial positions
             for (let i = 0; i < particleCount * 3; i += 3) {
                 particlePositions[i] = (Math.random() - 0.5) * 20;
                 particlePositions[i + 1] = (Math.random() - 0.5) * 20;
@@ -249,7 +253,7 @@
             
             geometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
             
-            // 创建颜色数组
+            // Create color array
             const colors = new Float32Array(particleCount * 3);
             for (let i = 0; i < particleCount * 3; i += 3) {
                 colors[i] = 0.0;      // R
@@ -271,9 +275,13 @@
             scene.add(particles);
         }
         
-        // 初始化MediaPipe Hands
+        // Initialize MediaPipe Hands with FIXED camera
         function initMediaPipe() {
             const videoElement = document.getElementById('webcam');
+            
+            // Fix: Ensure video element is properly configured
+            videoElement.width = 640;
+            videoElement.height = 480;
             
             const hands = new Hands({
                 locateFile: (file) => {
@@ -292,19 +300,35 @@
                 handleHandResults(results);
             });
             
-            // 启动摄像头
-            const camera = new Camera(videoElement, {
-                onFrame: async () => {
-                    await hands.send({image: videoElement});
-                },
-                width: 640,
-                height: 480
-            });
-            
-            camera.start();
+            // Fix: Create camera with proper error handling
+            try {
+                const camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        try {
+                            await hands.send({image: videoElement});
+                        } catch (e) {
+                            console.log('Camera frame error:', e);
+                        }
+                    },
+                    width: 640,
+                    height: 480
+                });
+                
+                camera.start().then(() => {
+                    console.log('Camera started successfully');
+                }).catch(err => {
+                    console.error('Camera error:', err);
+                    // Fallback: Use a static camera image
+                    document.getElementById('instruction').innerHTML = 
+                        'Camera permission needed. Please allow camera access and refresh.';
+                });
+                
+            } catch (error) {
+                console.error('Camera initialization error:', error);
+            }
         }
         
-        // 处理手部检测结果
+        // Handle hand detection results
         function handleHandResults(results) {
             handDetected = results.multiHandLandmarks && results.multiHandLandmarks.length > 0;
             
@@ -315,25 +339,25 @@
             
             const landmarks = results.multiHandLandmarks[0];
             
-            // 更新手部位置
+            // Update hand position
             handPosition.x = (landmarks[0].x - 0.5) * 20;
             handPosition.y = (0.5 - landmarks[0].y) * 20;
             handPosition.z = landmarks[0].z * 10;
             
-            // 计算手速
+            // Calculate hand speed
             calculateHandSpeed(landmarks[0]);
             
-            // 计算手指数量
+            // Count fingers
             fingerCount = countFingers(landmarks);
             
-            // 处理手势变化
+            // Handle gesture changes
             if (fingerCount !== lastFingerCount && Date.now() - lastShapeChangeTime > 500) {
                 handleGestureChange(fingerCount);
                 lastFingerCount = fingerCount;
             }
         }
         
-        // 计算手速
+        // Calculate hand speed
         function calculateHandSpeed(wristLandmark) {
             const now = Date.now();
             
@@ -352,7 +376,7 @@
             lastHandTime = now;
         }
         
-        // 计算手指数量
+        // Count fingers
         function countFingers(landmarks) {
             const fingerTips = [4, 8, 12, 16, 20];
             const fingerPips = [2, 5, 9, 13, 17];
@@ -364,10 +388,10 @@
                 const pip = landmarks[fingerPips[i]];
                 
                 if (i === 0) {
-                    // 拇指
+                    // Thumb
                     if (tip.x < pip.x) count++;
                 } else {
-                    // 其他手指
+                    // Other fingers
                     if (tip.y < pip.y) count++;
                 }
             }
@@ -375,29 +399,29 @@
             return count;
         }
         
-        // 处理手势变化
+        // Handle gesture changes
         function handleGestureChange(fingers) {
             if (isResetting) return;
             
             lastShapeChangeTime = Date.now();
             
             switch(fingers) {
-                case 0: // 握拳 - 重置
+                case 0: // Fist - Reset
                     resetScene();
                     break;
-                case 1: // 1指 - 数字1
+                case 1: // 1 finger - Number 1
                     targetShape = 'number1';
                     showMagicText("1");
                     break;
-                case 2: // 2指 - 数字2
+                case 2: // 2 fingers - Number 2
                     targetShape = 'number2';
                     showMagicText("2");
                     break;
-                case 3: // 3指 - 数字3
+                case 3: // 3 fingers - Number 3
                     targetShape = 'number3';
                     showMagicText("3");
                     break;
-                case 5: // 五指 - 告白特效
+                case 5: // 5 fingers - Love effect
                     targetShape = 'iloveyou';
                     createLoveEffect();
                     showMagicText("I ❤️ U");
@@ -407,7 +431,7 @@
             }
         }
         
-        // 显示魔法文字
+        // Show magic text
         function showMagicText(text) {
             const magicText = document.getElementById('magicText');
             magicText.textContent = text;
@@ -418,21 +442,21 @@
             }, 1000);
         }
         
-        // 创建告白特效
+        // Create love effect
         function createLoveEffect() {
             createHearts();
             createBalloons();
             createFlowers();
         }
         
-        // 创建爱心
+        // Create hearts
         function createHearts() {
             for (let i = 0; i < 30; i++) {
                 const heart = createHeart();
                 hearts.push(heart);
                 scene.add(heart);
                 
-                // 动画
+                // Animation
                 animateHeart(heart, i);
             }
         }
@@ -441,7 +465,7 @@
             const heartShape = new THREE.Shape();
             heartShape.moveTo(0, 0);
             
-            // 绘制爱心形状
+            // Draw heart shape
             heartShape.bezierCurveTo(0, 0.5, -0.5, 1, -0.25, 1.5);
             heartShape.bezierCurveTo(0, 1.8, 0.25, 1.5, 0.5, 1.5);
             heartShape.bezierCurveTo(0.75, 1.5, 1, 1.8, 1.25, 1.5);
@@ -498,7 +522,7 @@
             }, delay * 50);
         }
         
-        // 创建气球
+        // Create balloons
         function createBalloons() {
             for (let i = 0; i < 20; i++) {
                 const balloon = createBalloon();
@@ -524,7 +548,7 @@
                 (Math.random() - 0.5) * 10
             );
             
-            // 气球线
+            // Balloon string
             const lineGeometry = new THREE.CylinderGeometry(0.01, 0.01, 2);
             const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
             const line = new THREE.Mesh(lineGeometry, lineMaterial);
@@ -559,7 +583,7 @@
             }, delay * 100);
         }
         
-        // 创建花朵
+        // Create flowers
         function createFlowers() {
             for (let i = 0; i < 15; i++) {
                 const flower = createFlower();
@@ -573,7 +597,7 @@
         function createFlower() {
             const group = new THREE.Group();
             
-            // 花瓣
+            // Petals
             const petalGeometry = new THREE.ConeGeometry(0.2, 0.5, 8);
             const petalMaterial = new THREE.MeshBasicMaterial({
                 color: new THREE.Color().setHSL(Math.random() * 0.3 + 0.8, 1, 0.6),
@@ -588,7 +612,7 @@
                 group.add(petal);
             }
             
-            // 花心
+            // Flower center
             const centerGeometry = new THREE.SphereGeometry(0.1, 8, 8);
             const centerMaterial = new THREE.MeshBasicMaterial({
                 color: 0xffcc00,
@@ -632,13 +656,13 @@
             }, delay * 150);
         }
         
-        // 重置场景
+        // Reset scene
         function resetScene() {
             isResetting = true;
             
             targetShape = 'idle';
             
-            // 清除所有特效
+            // Clear all effects
             hearts.forEach(heart => scene.remove(heart));
             hearts = [];
             
@@ -648,7 +672,7 @@
             flowers.forEach(flower => scene.remove(flower));
             flowers = [];
             
-            // 重置粒子位置
+            // Reset particle positions
             const positions = particles.geometry.attributes.position.array;
             for (let i = 0; i < particleCount * 3; i += 3) {
                 positions[i] = (Math.random() - 0.5) * 20;
@@ -666,7 +690,7 @@
             }, 500);
         }
         
-        // 获取目标位置
+        // Get target position
         function getTargetPosition(index, total) {
             let x = 0, y = 0, z = 0;
             const time = Date.now() * 0.001;
@@ -674,7 +698,7 @@
             
             switch(targetShape) {
                 case 'number1':
-                    // 数字1
+                    // Number 1
                     if (progress < 0.2) {
                         x = -3 + 6 * (progress / 0.2);
                         y = 5;
@@ -690,7 +714,7 @@
                     break;
                     
                 case 'number2':
-                    // 数字2
+                    // Number 2
                     if (progress < 0.3) {
                         const t = progress / 0.3;
                         const angle = Math.PI * t * 0.8;
@@ -709,7 +733,7 @@
                     break;
                     
                 case 'number3':
-                    // 数字3
+                    // Number 3
                     if (progress < 0.5) {
                         const t = progress / 0.5;
                         const angle = Math.PI * t * 1.5;
@@ -731,7 +755,7 @@
                         x = -6;
                         y = 4 - 8 * t;
                     } else if (progress < 0.3) {
-                        // 爱心
+                        // Heart
                         const t = (progress - 0.1) / 0.2;
                         const angle = t * Math.PI * 2;
                         const scale = 3;
@@ -750,7 +774,7 @@
                             y = -4 + Math.sin(angle + Math.PI) * 3;
                         }
                     } else {
-                        // 随机粒子
+                        // Random particles
                         const angle = progress * Math.PI * 2;
                         const radius = 8;
                         x = radius * Math.cos(angle) * Math.sin(progress * Math.PI);
@@ -760,7 +784,7 @@
                     break;
                     
                 default: // idle
-                    // 随机分布
+                    // Random distribution
                     const angle = progress * Math.PI * 2;
                     const radius = 10;
                     x = radius * Math.cos(angle) * Math.sin(progress * Math.PI);
@@ -768,14 +792,14 @@
                     z = radius * Math.cos(progress * Math.PI);
             }
             
-            // 添加微妙动画
+            // Add subtle animation
             x += Math.sin(time * 0.5 + index * 0.001) * 0.1;
             y += Math.cos(time * 0.3 + index * 0.001) * 0.1;
             
             return new THREE.Vector3(x, y, z);
         }
         
-        // 更新物理模拟
+        // Update physics simulation
         function updatePhysics() {
             const positions = particles.geometry.attributes.position.array;
             const colors = particles.geometry.attributes.color.array;
@@ -783,22 +807,22 @@
             for (let i = 0; i < particleCount * 3; i += 3) {
                 const idx = i / 3;
                 
-                // 当前位置
+                // Current position
                 const currentPos = new THREE.Vector3(
                     positions[i],
                     positions[i + 1],
                     positions[i + 2]
                 );
                 
-                // 目标位置
+                // Target position
                 const targetPos = getTargetPosition(idx, particleCount);
                 
-                // 计算吸引力
+                // Calculate attraction
                 const attraction = new THREE.Vector3()
                     .subVectors(targetPos, currentPos)
                     .multiplyScalar(0.08);
                 
-                // 手部交互
+                // Hand interaction
                 let handForce = new THREE.Vector3(0, 0, 0);
                 if (handDetected) {
                     const handVec = new THREE.Vector3(handPosition.x, handPosition.y, handPosition.z);
@@ -822,43 +846,43 @@
                     }
                 }
                 
-                // 总加速度
+                // Total acceleration
                 particleAccelerations[i] = attraction.x + handForce.x;
                 particleAccelerations[i + 1] = attraction.y + handForce.y;
                 particleAccelerations[i + 2] = attraction.z + handForce.z;
                 
-                // 更新速度
+                // Update velocity
                 particleVelocities[i] += particleAccelerations[i];
                 particleVelocities[i + 1] += particleAccelerations[i + 1];
                 particleVelocities[i + 2] += particleAccelerations[i + 2];
                 
-                // 阻尼
+                // Damping
                 particleVelocities[i] *= 0.96;
                 particleVelocities[i + 1] *= 0.96;
                 particleVelocities[i + 2] *= 0.96;
                 
-                // 更新位置
+                // Update position
                 positions[i] += particleVelocities[i];
                 positions[i + 1] += particleVelocities[i + 1];
                 positions[i + 2] += particleVelocities[i + 2];
                 
-                // 更新颜色
+                // Update colors
                 let r, g, b;
                 switch(targetShape) {
                     case 'number1':
-                        r = 0.0; g = 0.8; b = 1.0; // 青色
+                        r = 0.0; g = 0.8; b = 1.0; // Cyan
                         break;
                     case 'number2':
-                        r = 0.2; g = 1.0; b = 0.2; // 绿色
+                        r = 0.2; g = 1.0; b = 0.2; // Green
                         break;
                     case 'number3':
-                        r = 1.0; g = 0.5; b = 0.0; // 橙色
+                        r = 1.0; g = 0.5; b = 0.0; // Orange
                         break;
                     case 'iloveyou':
-                        r = 1.0; g = 0.2; b = 0.4; // 粉色
+                        r = 1.0; g = 0.2; b = 0.4; // Pink
                         break;
                     default:
-                        r = 0.0; g = 0.6; b = 1.0; // 蓝色
+                        r = 0.0; g = 0.6; b = 1.0; // Blue
                 }
                 
                 colors[i] = r;
@@ -870,13 +894,13 @@
             particles.geometry.attributes.color.needsUpdate = true;
         }
         
-        // 动画循环
+        // Animation loop
         function animate() {
             requestAnimationFrame(animate);
             
             updatePhysics();
             
-            // 相机动画
+            // Camera animation
             const time = Date.now() * 0.001;
             camera.position.x = Math.sin(time * 0.1) * 25;
             camera.position.z = Math.cos(time * 0.1) * 25;
@@ -885,14 +909,14 @@
             renderer.render(scene, camera);
         }
         
-        // 窗口大小变化
+        // Window resize handler
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
         
-        // 全屏切换
+        // Fullscreen toggle
         function toggleFullscreen() {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen();
@@ -901,7 +925,7 @@
             }
         }
         
-        // 初始化
+        // Initialize
         function init() {
             initThreeJS();
             initMediaPipe();
