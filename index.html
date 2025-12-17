@@ -2,48 +2,32 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finger Magic - 3D Particle Interaction</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1646424875/camera_utils.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body {
-            background: #000;
-            overflow: hidden;
-            font-family: 'Segoe UI', Arial, sans-serif;
+        body { 
+            background: #000; 
+            overflow: hidden; 
+            font-family: Arial, sans-serif;
+            height: 100vh;
         }
-        
         #container {
             position: relative;
             width: 100vw;
             height: 100vh;
         }
-        
-        canvas {
-            display: block;
-        }
-        
-        #webcam {
+        canvas { 
+            display: block; 
             position: absolute;
-            top: 20px;
-            right: 20px;
-            width: 200px;
-            height: 150px;
-            border-radius: 8px;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
-            z-index: 100;
-            object-fit: cover;
-            transform: scaleX(-1);
+            top: 0;
+            left: 0;
         }
-        
         .fullscreen-btn {
             position: absolute;
             top: 20px;
-            right: 230px;
+            right: 20px;
             width: 40px;
             height: 40px;
             background: rgba(255, 255, 255, 0.1);
@@ -59,12 +43,20 @@
             transition: all 0.3s;
             backdrop-filter: blur(5px);
         }
-        
         .fullscreen-btn:hover {
             background: rgba(255, 255, 255, 0.2);
             transform: scale(1.1);
         }
-        
+        .instruction {
+            position: absolute;
+            bottom: 30px;
+            width: 100%;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            z-index: 10;
+            pointer-events: none;
+        }
         .loading {
             position: absolute;
             top: 0;
@@ -77,14 +69,10 @@
             justify-content: center;
             align-items: center;
             z-index: 10000;
-            transition: opacity 0.5s;
         }
-        
         .loading.hidden {
-            opacity: 0;
-            pointer-events: none;
+            display: none;
         }
-        
         .loading-spinner {
             width: 50px;
             height: 50px;
@@ -94,29 +82,14 @@
             animation: spin 1s linear infinite;
             margin-bottom: 20px;
         }
-        
-        .loading-text {
-            color: #fff;
-            font-size: 18px;
-            letter-spacing: 2px;
-        }
-        
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        
-        .instruction {
-            position: absolute;
-            bottom: 30px;
-            width: 100%;
-            text-align: center;
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 14px;
-            z-index: 10;
-            pointer-events: none;
+        .loading-text {
+            color: #fff;
+            font-size: 18px;
         }
-        
         .magic-text {
             position: absolute;
             top: 50%;
@@ -131,12 +104,22 @@
             text-shadow: 0 0 20px rgba(255, 51, 102, 0.8);
             transition: opacity 0.5s;
         }
+        #cameraStatus {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+        }
     </style>
 </head>
 <body>
     <div id="container">
         <canvas id="threeCanvas"></canvas>
-        <video id="webcam" autoplay muted playsinline></video>
+        <video id="webcam" autoplay muted playsinline style="display: none;"></video>
         
         <button class="fullscreen-btn" id="fullscreenBtn" title="Fullscreen">
             ⛶
@@ -148,9 +131,11 @@
             Finger Magic: 1 finger = "1", 2 fingers = "2", 3 fingers = "3", 5 fingers = "I ❤️ U", fist = Reset
         </div>
         
+        <div id="cameraStatus">Requesting camera access...</div>
+        
         <div class="loading" id="loadingScreen">
             <div class="loading-spinner"></div>
-            <div class="loading-text">Loading Magic System...</div>
+            <div class="loading-text">Initializing Magic System...</div>
         </div>
     </div>
 
@@ -160,45 +145,34 @@
         let particles, particlePositions, particleVelocities, particleAccelerations;
         let particleCount = 15000;
         let targetShape = 'idle';
-        let currentShape = 'idle';
         let handDetected = false;
         let fingerCount = 0;
         let lastFingerCount = 0;
         let handPosition = { x: 0, y: 0, z: 0 };
-        let handSpeed = 0;
-        let lastHandPosition = null;
-        let lastHandTime = 0;
         let lastShapeChangeTime = 0;
         let hearts = [], balloons = [], flowers = [];
-        let isResetting = false;
-        let cameraControls = { x: 0, y: 0, z: 25 };
-        
-        // Fix: Initialize CameraUtils globally
-        window.Camera = Camera;
         
         // Initialize Three.js
         function initThreeJS() {
+            console.log("Initializing Three.js...");
+            
             // Create scene
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x000000);
-            scene.fog = new THREE.Fog(0x000000, 10, 30);
             
-            // Create camera - ensure text display is complete
+            // Create camera
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(cameraControls.x, cameraControls.y, cameraControls.z);
+            camera.position.set(0, 0, 25);
             
             // Create renderer
             const canvas = document.getElementById('threeCanvas');
             renderer = new THREE.WebGLRenderer({ 
                 canvas, 
-                antialias: true, 
-                alpha: true,
+                antialias: true,
                 powerPreference: "high-performance"
             });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            renderer.shadowMap.enabled = true;
-            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             
             // Add lights
             const ambientLight = new THREE.AmbientLight(0x333333);
@@ -206,12 +180,10 @@
             
             const directionalLight = new THREE.DirectionalLight(0xff3366, 0.8);
             directionalLight.position.set(10, 10, 10);
-            directionalLight.castShadow = true;
             scene.add(directionalLight);
             
             const pointLight = new THREE.PointLight(0x3366ff, 0.6, 50);
             pointLight.position.set(-10, 10, 10);
-            pointLight.castShadow = true;
             scene.add(pointLight);
             
             // Create particle system
@@ -221,10 +193,7 @@
             window.addEventListener('resize', onWindowResize);
             document.getElementById('fullscreenBtn').addEventListener('click', toggleFullscreen);
             
-            // Hide loading screen
-            setTimeout(() => {
-                document.getElementById('loadingScreen').classList.add('hidden');
-            }, 2000);
+            console.log("Three.js initialized successfully");
         }
         
         // Create particle system
@@ -238,9 +207,13 @@
             
             // Random initial positions
             for (let i = 0; i < particleCount * 3; i += 3) {
-                particlePositions[i] = (Math.random() - 0.5) * 20;
-                particlePositions[i + 1] = (Math.random() - 0.5) * 20;
-                particlePositions[i + 2] = (Math.random() - 0.5) * 20;
+                const radius = 10;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                
+                particlePositions[i] = radius * Math.sin(phi) * Math.cos(theta);
+                particlePositions[i + 1] = radius * Math.sin(phi) * Math.sin(theta);
+                particlePositions[i + 2] = radius * Math.cos(phi);
                 
                 particleVelocities[i] = 0;
                 particleVelocities[i + 1] = 0;
@@ -275,57 +248,122 @@
             scene.add(particles);
         }
         
-        // Initialize MediaPipe Hands with FIXED camera
-        function initMediaPipe() {
+        // Initialize MediaPipe Hands with SIMPLIFIED camera access
+        async function initMediaPipe() {
+            console.log("Initializing MediaPipe Hands...");
             const videoElement = document.getElementById('webcam');
+            const statusElement = document.getElementById('cameraStatus');
             
-            // Fix: Ensure video element is properly configured
-            videoElement.width = 640;
-            videoElement.height = 480;
-            
-            const hands = new Hands({
-                locateFile: (file) => {
-                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-                }
-            });
-            
-            hands.setOptions({
-                maxNumHands: 1,
-                modelComplexity: 1,
-                minDetectionConfidence: 0.7,
-                minTrackingConfidence: 0.7
-            });
-            
-            hands.onResults((results) => {
-                handleHandResults(results);
-            });
-            
-            // Fix: Create camera with proper error handling
+            // First, get camera access
             try {
-                const camera = new Camera(videoElement, {
-                    onFrame: async () => {
-                        try {
-                            await hands.send({image: videoElement});
-                        } catch (e) {
-                            console.log('Camera frame error:', e);
-                        }
-                    },
-                    width: 640,
-                    height: 480
+                statusElement.textContent = "Requesting camera permission...";
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: "user"
+                    } 
                 });
                 
-                camera.start().then(() => {
-                    console.log('Camera started successfully');
-                }).catch(err => {
-                    console.error('Camera error:', err);
-                    // Fallback: Use a static camera image
-                    document.getElementById('instruction').innerHTML = 
-                        'Camera permission needed. Please allow camera access and refresh.';
+                videoElement.srcObject = stream;
+                videoElement.width = 640;
+                videoElement.height = 480;
+                
+                statusElement.textContent = "Camera access granted. Loading hand detection...";
+                console.log("Camera access granted");
+                
+                // Wait for video to be ready
+                await new Promise(resolve => {
+                    videoElement.onloadedmetadata = resolve;
                 });
                 
             } catch (error) {
-                console.error('Camera initialization error:', error);
+                console.error("Camera error:", error);
+                statusElement.textContent = "Camera access denied. Using simulated hand tracking.";
+                // Continue without camera - use simulated input
+                startSimulatedTracking();
+                return;
             }
+            
+            // Now initialize MediaPipe
+            try {
+                const hands = new Hands({
+                    locateFile: (file) => {
+                        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                    }
+                });
+                
+                hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.7,
+                    minTrackingConfidence: 0.7
+                });
+                
+                hands.onResults((results) => {
+                    handleHandResults(results);
+                });
+                
+                // Simple polling for camera frames
+                async function processFrame() {
+                    if (videoElement.readyState === videoElement.HAVE_ENOUGH_DATA) {
+                        await hands.send({image: videoElement});
+                    }
+                    requestAnimationFrame(processFrame);
+                }
+                
+                await hands.initialize();
+                statusElement.textContent = "Hand detection ready!";
+                console.log("MediaPipe Hands initialized");
+                
+                // Start processing frames
+                processFrame();
+                
+            } catch (error) {
+                console.error("MediaPipe error:", error);
+                statusElement.textContent = "Hand detection failed. Using simulated input.";
+                startSimulatedTracking();
+            }
+        }
+        
+        // Simulated hand tracking for when camera fails
+        function startSimulatedTracking() {
+            console.log("Starting simulated hand tracking");
+            const statusElement = document.getElementById('cameraStatus');
+            statusElement.textContent = "Using simulated input. Move mouse to control.";
+            
+            let mouseX = 0, mouseY = 0;
+            
+            document.addEventListener('mousemove', (e) => {
+                mouseX = (e.clientX / window.innerWidth - 0.5) * 20;
+                mouseY = (0.5 - e.clientY / window.innerHeight) * 20;
+                
+                // Simulate hand position
+                handPosition.x = mouseX;
+                handPosition.y = mouseY;
+                handPosition.z = 0;
+            });
+            
+            // Simulate finger gestures with keyboard
+            document.addEventListener('keydown', (e) => {
+                switch(e.key) {
+                    case '1': handleGestureChange(1); break;
+                    case '2': handleGestureChange(2); break;
+                    case '3': handleGestureChange(3); break;
+                    case '5': handleGestureChange(5); break;
+                    case '0': handleGestureChange(0); break;
+                }
+            });
+            
+            // Auto cycle through gestures for demo
+            let demoIndex = 0;
+            const demoGestures = [1, 2, 3, 5, 0];
+            
+            setInterval(() => {
+                handleGestureChange(demoGestures[demoIndex]);
+                demoIndex = (demoIndex + 1) % demoGestures.length;
+            }, 3000);
         }
         
         // Handle hand detection results
@@ -339,15 +377,12 @@
             
             const landmarks = results.multiHandLandmarks[0];
             
-            // Update hand position
+            // Update hand position (use wrist)
             handPosition.x = (landmarks[0].x - 0.5) * 20;
             handPosition.y = (0.5 - landmarks[0].y) * 20;
             handPosition.z = landmarks[0].z * 10;
             
-            // Calculate hand speed
-            calculateHandSpeed(landmarks[0]);
-            
-            // Count fingers
+            // Count fingers (simplified)
             fingerCount = countFingers(landmarks);
             
             // Handle gesture changes
@@ -357,29 +392,10 @@
             }
         }
         
-        // Calculate hand speed
-        function calculateHandSpeed(wristLandmark) {
-            const now = Date.now();
-            
-            if (lastHandPosition && lastHandTime > 0) {
-                const timeDiff = (now - lastHandTime) / 1000;
-                if (timeDiff > 0) {
-                    const dx = wristLandmark.x - lastHandPosition.x;
-                    const dy = wristLandmark.y - lastHandPosition.y;
-                    const dz = wristLandmark.z - lastHandPosition.z;
-                    
-                    handSpeed = Math.sqrt(dx*dx + dy*dy + dz*dz) / timeDiff;
-                }
-            }
-            
-            lastHandPosition = {x: wristLandmark.x, y: wristLandmark.y, z: wristLandmark.z};
-            lastHandTime = now;
-        }
-        
-        // Count fingers
+        // Count fingers (simplified version)
         function countFingers(landmarks) {
-            const fingerTips = [4, 8, 12, 16, 20];
-            const fingerPips = [2, 5, 9, 13, 17];
+            const fingerTips = [4, 8, 12, 16, 20]; // Thumb, index, middle, ring, pinky
+            const fingerPips = [2, 5, 9, 13, 17]; // Second joints
             
             let count = 0;
             
@@ -387,12 +403,11 @@
                 const tip = landmarks[fingerTips[i]];
                 const pip = landmarks[fingerPips[i]];
                 
-                if (i === 0) {
-                    // Thumb
-                    if (tip.x < pip.x) count++;
-                } else {
-                    // Other fingers
-                    if (tip.y < pip.y) count++;
+                // Simplified finger detection
+                if (i === 0) { // Thumb
+                    if (tip.x < pip.x - 0.05) count++;
+                } else { // Other fingers
+                    if (tip.y < pip.y - 0.05) count++;
                 }
             }
             
@@ -401,12 +416,14 @@
         
         // Handle gesture changes
         function handleGestureChange(fingers) {
-            if (isResetting) return;
+            if (Date.now() - lastShapeChangeTime < 500) return;
             
             lastShapeChangeTime = Date.now();
             
             switch(fingers) {
                 case 0: // Fist - Reset
+                    targetShape = 'idle';
+                    showMagicText("RESET");
                     resetScene();
                     break;
                 case 1: // 1 finger - Number 1
@@ -451,8 +468,21 @@
         
         // Create hearts
         function createHearts() {
-            for (let i = 0; i < 30; i++) {
-                const heart = createHeart();
+            for (let i = 0; i < 20; i++) {
+                const geometry = new THREE.SphereGeometry(0.1, 8, 8);
+                const material = new THREE.MeshBasicMaterial({
+                    color: new THREE.Color().setHSL(Math.random(), 1, 0.7),
+                    transparent: true,
+                    opacity: 0.9
+                });
+                
+                const heart = new THREE.Mesh(geometry, material);
+                heart.position.set(
+                    (Math.random() - 0.5) * 15,
+                    -10,
+                    (Math.random() - 0.5) * 5
+                );
+                
                 hearts.push(heart);
                 scene.add(heart);
                 
@@ -461,53 +491,16 @@
             }
         }
         
-        function createHeart() {
-            const heartShape = new THREE.Shape();
-            heartShape.moveTo(0, 0);
-            
-            // Draw heart shape
-            heartShape.bezierCurveTo(0, 0.5, -0.5, 1, -0.25, 1.5);
-            heartShape.bezierCurveTo(0, 1.8, 0.25, 1.5, 0.5, 1.5);
-            heartShape.bezierCurveTo(0.75, 1.5, 1, 1.8, 1.25, 1.5);
-            heartShape.bezierCurveTo(1.5, 1, 2, 0.5, 2, 0);
-            heartShape.bezierCurveTo(2, -0.5, 1, -1, 0, -1.5);
-            heartShape.bezierCurveTo(-1, -1, -2, -0.5, -2, 0);
-            heartShape.bezierCurveTo(-2, 0.5, -1.5, 1, -1.25, 1.5);
-            heartShape.bezierCurveTo(-1, 1.8, -0.75, 1.5, -0.5, 1.5);
-            heartShape.bezierCurveTo(-0.25, 1.5, 0, 1.8, 0, 2);
-            
-            const geometry = new THREE.ShapeGeometry(heartShape);
-            geometry.scale(0.05, 0.05, 0.05);
-            
-            const material = new THREE.MeshBasicMaterial({
-                color: new THREE.Color().setHSL(Math.random(), 1, 0.7),
-                transparent: true,
-                opacity: 0.9
-            });
-            
-            const heart = new THREE.Mesh(geometry, material);
-            heart.position.set(
-                (Math.random() - 0.5) * 20,
-                -10,
-                (Math.random() - 0.5) * 10
-            );
-            
-            return heart;
-        }
-        
         function animateHeart(heart, delay) {
             setTimeout(() => {
                 const startY = heart.position.y;
-                const amplitude = 15 + Math.random() * 10;
-                const speed = 0.5 + Math.random() * 0.5;
-                const rotationSpeed = Math.random() * 0.02;
+                const speed = 2 + Math.random() * 2;
                 
                 function float() {
                     if (!heart.parent) return;
                     
-                    const time = Date.now() * 0.001;
-                    heart.position.y = startY + Math.sin(time * speed) * amplitude;
-                    heart.rotation.y += rotationSpeed;
+                    heart.position.y += speed * 0.1;
+                    heart.rotation.y += 0.02;
                     
                     if (heart.position.y > 20) {
                         scene.remove(heart);
@@ -519,13 +512,26 @@
                 }
                 
                 float();
-            }, delay * 50);
+            }, delay * 100);
         }
         
         // Create balloons
         function createBalloons() {
-            for (let i = 0; i < 20; i++) {
-                const balloon = createBalloon();
+            for (let i = 0; i < 15; i++) {
+                const geometry = new THREE.SphereGeometry(0.3, 16, 16);
+                const material = new THREE.MeshBasicMaterial({
+                    color: new THREE.Color().setHSL(Math.random(), 1, 0.6),
+                    transparent: true,
+                    opacity: 0.8
+                });
+                
+                const balloon = new THREE.Mesh(geometry, material);
+                balloon.position.set(
+                    (Math.random() - 0.5) * 10,
+                    -10,
+                    (Math.random() - 0.5) * 5
+                );
+                
                 balloons.push(balloon);
                 scene.add(balloon);
                 
@@ -533,44 +539,17 @@
             }
         }
         
-        function createBalloon() {
-            const geometry = new THREE.SphereGeometry(0.3, 16, 16);
-            const material = new THREE.MeshBasicMaterial({
-                color: new THREE.Color().setHSL(Math.random(), 1, 0.6),
-                transparent: true,
-                opacity: 0.8
-            });
-            
-            const balloon = new THREE.Mesh(geometry, material);
-            balloon.position.set(
-                (Math.random() - 0.5) * 15,
-                -10,
-                (Math.random() - 0.5) * 10
-            );
-            
-            // Balloon string
-            const lineGeometry = new THREE.CylinderGeometry(0.01, 0.01, 2);
-            const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-            const line = new THREE.Mesh(lineGeometry, lineMaterial);
-            line.position.y = -1;
-            balloon.add(line);
-            
-            return balloon;
-        }
-        
         function animateBalloon(balloon, delay) {
             setTimeout(() => {
-                const startY = balloon.position.y;
-                const speed = 0.3 + Math.random() * 0.3;
-                const rotationSpeed = Math.random() * 0.01;
+                const speed = 1 + Math.random();
                 
                 function rise() {
                     if (!balloon.parent) return;
                     
-                    balloon.position.y += speed;
-                    balloon.rotation.y += rotationSpeed;
+                    balloon.position.y += speed * 0.1;
+                    balloon.rotation.y += 0.01;
                     
-                    if (balloon.position.y > 25) {
+                    if (balloon.position.y > 20) {
                         scene.remove(balloon);
                         const index = balloons.indexOf(balloon);
                         if (index > -1) balloons.splice(index, 1);
@@ -580,13 +559,29 @@
                 }
                 
                 rise();
-            }, delay * 100);
+            }, delay * 150);
         }
         
         // Create flowers
         function createFlowers() {
-            for (let i = 0; i < 15; i++) {
-                const flower = createFlower();
+            for (let i = 0; i < 10; i++) {
+                const group = new THREE.Group();
+                
+                // Simple flower representation
+                const geometry = new THREE.ConeGeometry(0.2, 0.4, 6);
+                const material = new THREE.MeshBasicMaterial({
+                    color: new THREE.Color().setHSL(Math.random() * 0.3 + 0.8, 1, 0.6),
+                    transparent: true,
+                    opacity: 0.9
+                });
+                
+                const flower = new THREE.Mesh(geometry, material);
+                flower.position.set(
+                    (Math.random() - 0.5) * 8,
+                    -10,
+                    (Math.random() - 0.5) * 4
+                );
+                
                 flowers.push(flower);
                 scene.add(flower);
                 
@@ -594,54 +589,15 @@
             }
         }
         
-        function createFlower() {
-            const group = new THREE.Group();
-            
-            // Petals
-            const petalGeometry = new THREE.ConeGeometry(0.2, 0.5, 8);
-            const petalMaterial = new THREE.MeshBasicMaterial({
-                color: new THREE.Color().setHSL(Math.random() * 0.3 + 0.8, 1, 0.6),
-                transparent: true,
-                opacity: 0.9
-            });
-            
-            for (let i = 0; i < 8; i++) {
-                const petal = new THREE.Mesh(petalGeometry, petalMaterial);
-                petal.rotation.z = (i / 8) * Math.PI * 2;
-                petal.position.y = 0.1;
-                group.add(petal);
-            }
-            
-            // Flower center
-            const centerGeometry = new THREE.SphereGeometry(0.1, 8, 8);
-            const centerMaterial = new THREE.MeshBasicMaterial({
-                color: 0xffcc00,
-                transparent: true,
-                opacity: 0.9
-            });
-            const center = new THREE.Mesh(centerGeometry, centerMaterial);
-            group.add(center);
-            
-            group.position.set(
-                (Math.random() - 0.5) * 12,
-                -10,
-                (Math.random() - 0.5) * 8
-            );
-            
-            return group;
-        }
-        
         function animateFlower(flower, delay) {
             setTimeout(() => {
-                const startY = flower.position.y;
-                const speed = 0.4 + Math.random() * 0.4;
-                const rotationSpeed = Math.random() * 0.015;
+                const speed = 1.5 + Math.random();
                 
                 function float() {
                     if (!flower.parent) return;
                     
-                    flower.position.y += speed;
-                    flower.rotation.y += rotationSpeed;
+                    flower.position.y += speed * 0.1;
+                    flower.rotation.y += 0.015;
                     
                     if (flower.position.y > 20) {
                         scene.remove(flower);
@@ -653,13 +609,11 @@
                 }
                 
                 float();
-            }, delay * 150);
+            }, delay * 200);
         }
         
         // Reset scene
         function resetScene() {
-            isResetting = true;
-            
             targetShape = 'idle';
             
             // Clear all effects
@@ -671,26 +625,9 @@
             
             flowers.forEach(flower => scene.remove(flower));
             flowers = [];
-            
-            // Reset particle positions
-            const positions = particles.geometry.attributes.position.array;
-            for (let i = 0; i < particleCount * 3; i += 3) {
-                positions[i] = (Math.random() - 0.5) * 20;
-                positions[i + 1] = (Math.random() - 0.5) * 20;
-                positions[i + 2] = (Math.random() - 0.5) * 20;
-                
-                particleVelocities[i] = 0;
-                particleVelocities[i + 1] = 0;
-                particleVelocities[i + 2] = 0;
-            }
-            particles.geometry.attributes.position.needsUpdate = true;
-            
-            setTimeout(() => {
-                isResetting = false;
-            }, 500);
         }
         
-        // Get target position
+        // Get target position for particles
         function getTargetPosition(index, total) {
             let x = 0, y = 0, z = 0;
             const time = Date.now() * 0.001;
@@ -698,103 +635,71 @@
             
             switch(targetShape) {
                 case 'number1':
-                    // Number 1
-                    if (progress < 0.2) {
-                        x = -3 + 6 * (progress / 0.2);
-                        y = 5;
-                    } else if (progress < 0.5) {
-                        const t = (progress - 0.2) / 0.3;
-                        x = 0;
-                        y = 5 - 10 * t;
-                    } else {
-                        const t = (progress - 0.5) / 0.5;
-                        x = -3 + 6 * t;
-                        y = -5;
-                    }
+                    // Number 1 - simplified shape
+                    const angle1 = progress * Math.PI * 2;
+                    x = Math.sin(angle1 * 3) * 4;
+                    y = Math.cos(angle1 * 3) * 4;
                     break;
                     
                 case 'number2':
-                    // Number 2
-                    if (progress < 0.3) {
-                        const t = progress / 0.3;
-                        const angle = Math.PI * t * 0.8;
-                        x = Math.cos(angle) * 4 - 2;
-                        y = Math.sin(angle) * 2 + 3;
-                    } else if (progress < 0.6) {
-                        const t = (progress - 0.3) / 0.3;
-                        x = 2 - 8 * t;
-                        y = 3 - 5 * t;
-                    } else {
-                        const t = (progress - 0.6) / 0.4;
-                        const angle = Math.PI * t * 0.8 + Math.PI * 0.8;
-                        x = Math.cos(angle) * 4 - 2;
-                        y = Math.sin(angle) * 2 - 2;
-                    }
+                    // Number 2 - simplified shape
+                    const angle2 = progress * Math.PI * 2;
+                    x = Math.sin(angle2 * 4) * 4;
+                    y = Math.cos(angle2 * 2) * 4;
                     break;
                     
                 case 'number3':
-                    // Number 3
-                    if (progress < 0.5) {
-                        const t = progress / 0.5;
-                        const angle = Math.PI * t * 1.5;
-                        x = Math.cos(angle) * 3;
-                        y = Math.sin(angle) * 2 + 2;
-                    } else {
-                        const t = (progress - 0.5) / 0.5;
-                        const angle = Math.PI * t * 1.5 + Math.PI * 1.5;
-                        x = Math.cos(angle) * 3;
-                        y = Math.sin(angle) * 2 - 2;
-                    }
+                    // Number 3 - simplified shape
+                    const angle3 = progress * Math.PI * 2;
+                    x = Math.sin(angle3 * 5) * 4;
+                    y = Math.cos(angle3 * 3) * 4;
                     break;
                     
                 case 'iloveyou':
-                    // I ❤️ U
-                    if (progress < 0.1) {
+                    // I ❤️ U - simplified representation
+                    if (progress < 0.33) {
                         // I
-                        const t = progress / 0.1;
-                        x = -6;
-                        y = 4 - 8 * t;
-                    } else if (progress < 0.3) {
+                        x = -5;
+                        y = 8 - 16 * (progress * 3);
+                    } else if (progress < 0.66) {
                         // Heart
-                        const t = (progress - 0.1) / 0.2;
+                        const t = (progress - 0.33) * 3;
                         const angle = t * Math.PI * 2;
-                        const scale = 3;
-                        x = scale * 16 * Math.pow(Math.sin(angle), 3) * 0.03;
-                        y = scale * (13 * Math.cos(angle) - 5 * Math.cos(2*angle) - 2 * Math.cos(3*angle) - Math.cos(4*angle)) * 0.03;
-                    } else if (progress < 0.8) {
-                        // U
-                        const t = (progress - 0.3) / 0.5;
-                        if (t < 0.5) {
-                            x = 3;
-                            y = 4 - 8 * (t * 2);
-                        } else {
-                            const u = (t - 0.5) * 2;
-                            const angle = u * Math.PI;
-                            x = 3 + Math.cos(angle + Math.PI) * 3;
-                            y = -4 + Math.sin(angle + Math.PI) * 3;
-                        }
+                        x = Math.sin(angle * 3) * 3;
+                        y = Math.cos(angle * 2) * 3;
                     } else {
-                        // Random particles
-                        const angle = progress * Math.PI * 2;
-                        const radius = 8;
-                        x = radius * Math.cos(angle) * Math.sin(progress * Math.PI);
-                        y = radius * Math.sin(angle) * Math.sin(progress * Math.PI);
-                        z = radius * Math.cos(progress * Math.PI);
+                        // U
+                        const t = (progress - 0.66) * 3;
+                        x = 5;
+                        y = 8 - 16 * t;
                     }
                     break;
                     
                 default: // idle
-                    // Random distribution
-                    const angle = progress * Math.PI * 2;
-                    const radius = 10;
-                    x = radius * Math.cos(angle) * Math.sin(progress * Math.PI);
-                    y = radius * Math.sin(angle) * Math.sin(progress * Math.PI);
-                    z = radius * Math.cos(progress * Math.PI);
+                    // Random distribution in a sphere
+                    const radius = 8;
+                    const theta = progress * Math.PI * 2;
+                    const phi = Math.acos(2 * progress - 1);
+                    x = radius * Math.sin(phi) * Math.cos(theta);
+                    y = radius * Math.sin(phi) * Math.sin(theta);
+                    z = radius * Math.cos(phi);
             }
             
             // Add subtle animation
-            x += Math.sin(time * 0.5 + index * 0.001) * 0.1;
-            y += Math.cos(time * 0.3 + index * 0.001) * 0.1;
+            x += Math.sin(time * 0.5 + index * 0.001) * 0.2;
+            y += Math.cos(time * 0.3 + index * 0.001) * 0.2;
+            
+            // Hand interaction
+            if (handDetected) {
+                const dx = x - handPosition.x;
+                const dy = y - handPosition.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist < 5) {
+                    x += (x - handPosition.x) * 0.1 / (dist + 0.1);
+                    y += (y - handPosition.y) * 0.1 / (dist + 0.1);
+                }
+            }
             
             return new THREE.Vector3(x, y, z);
         }
@@ -817,70 +722,37 @@
                 // Target position
                 const targetPos = getTargetPosition(idx, particleCount);
                 
-                // Calculate attraction
+                // Calculate attraction force
                 const attraction = new THREE.Vector3()
                     .subVectors(targetPos, currentPos)
-                    .multiplyScalar(0.08);
-                
-                // Hand interaction
-                let handForce = new THREE.Vector3(0, 0, 0);
-                if (handDetected) {
-                    const handVec = new THREE.Vector3(handPosition.x, handPosition.y, handPosition.z);
-                    const distToHand = currentPos.distanceTo(handVec);
-                    
-                    if (distToHand < 4) {
-                        const repulse = new THREE.Vector3()
-                            .subVectors(currentPos, handVec)
-                            .normalize()
-                            .multiplyScalar(0.2 / (distToHand + 0.1));
-                        handForce.add(repulse);
-                        
-                        if (handSpeed > 0.3) {
-                            const storm = new THREE.Vector3(
-                                Math.random() - 0.5,
-                                Math.random() - 0.5,
-                                Math.random() - 0.5
-                            ).normalize().multiplyScalar(handSpeed * 0.03);
-                            handForce.add(storm);
-                        }
-                    }
-                }
-                
-                // Total acceleration
-                particleAccelerations[i] = attraction.x + handForce.x;
-                particleAccelerations[i + 1] = attraction.y + handForce.y;
-                particleAccelerations[i + 2] = attraction.z + handForce.z;
+                    .multiplyScalar(0.05);
                 
                 // Update velocity
-                particleVelocities[i] += particleAccelerations[i];
-                particleVelocities[i + 1] += particleAccelerations[i + 1];
-                particleVelocities[i + 2] += particleAccelerations[i + 2];
+                particleVelocities[i] += attraction.x;
+                particleVelocities[i + 1] += attraction.y;
+                particleVelocities[i + 2] += attraction.z;
                 
-                // Damping
-                particleVelocities[i] *= 0.96;
-                particleVelocities[i + 1] *= 0.96;
-                particleVelocities[i + 2] *= 0.96;
+                // Apply damping
+                particleVelocities[i] *= 0.95;
+                particleVelocities[i + 1] *= 0.95;
+                particleVelocities[i + 2] *= 0.95;
                 
                 // Update position
                 positions[i] += particleVelocities[i];
                 positions[i + 1] += particleVelocities[i + 1];
                 positions[i + 2] += particleVelocities[i + 2];
                 
-                // Update colors
+                // Update colors based on target shape
                 let r, g, b;
                 switch(targetShape) {
                     case 'number1':
-                        r = 0.0; g = 0.8; b = 1.0; // Cyan
-                        break;
+                        r = 0.0; g = 0.8; b = 1.0; break; // Cyan
                     case 'number2':
-                        r = 0.2; g = 1.0; b = 0.2; // Green
-                        break;
+                        r = 0.2; g = 1.0; b = 0.2; break; // Green
                     case 'number3':
-                        r = 1.0; g = 0.5; b = 0.0; // Orange
-                        break;
+                        r = 1.0; g = 0.5; b = 0.0; break; // Orange
                     case 'iloveyou':
-                        r = 1.0; g = 0.2; b = 0.4; // Pink
-                        break;
+                        r = 1.0; g = 0.2; b = 0.4; break; // Pink
                     default:
                         r = 0.0; g = 0.6; b = 1.0; // Blue
                 }
@@ -900,10 +772,10 @@
             
             updatePhysics();
             
-            // Camera animation
+            // Gentle camera movement
             const time = Date.now() * 0.001;
-            camera.position.x = Math.sin(time * 0.1) * 25;
-            camera.position.z = Math.cos(time * 0.1) * 25;
+            camera.position.x = Math.sin(time * 0.05) * 5;
+            camera.position.z = 25 + Math.cos(time * 0.05) * 2;
             camera.lookAt(0, 0, 0);
             
             renderer.render(scene, camera);
@@ -925,13 +797,29 @@
             }
         }
         
-        // Initialize
-        function init() {
+        // Initialize everything
+        async function init() {
+            console.log("Starting initialization...");
+            
+            // Initialize Three.js immediately
             initThreeJS();
-            initMediaPipe();
+            
+            // Hide loading screen after a short delay
+            setTimeout(() => {
+                document.getElementById('loadingScreen').classList.add('hidden');
+                document.getElementById('cameraStatus').style.display = 'none';
+            }, 2000);
+            
+            // Start animation loop
             animate();
+            
+            // Initialize MediaPipe (this might fail, but we have fallback)
+            await initMediaPipe();
+            
+            console.log("Initialization complete!");
         }
         
+        // Start when page loads
         window.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
